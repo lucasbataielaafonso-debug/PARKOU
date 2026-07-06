@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Mario Parkour 2D</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #5c94fc; /* Azul clássico do céu do Mario */
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            border: 4px solid #000;
+            background-color: #5c94fc;
+            box-shadow: 0px 10px 20px rgba(0,0,0,0.3);
+        }
+        #hud {
+            margin-bottom: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud">MOEDAS: <span id="score">0</span></div>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+
+        let score = 0;
+        const keys = {};
+
+        // Configurações de Física estilo Mario
+        const gravity = 0.6;
+        const friction = 0.85;
+
+        // Jogador (Estilo Mario)
+        const player = {
+            x: 50,
+            y: 300,
+            width: 24,
+            height: 32,
+            speedX: 0,
+            speedY: 0,
+            maxSpeed: 5,
+            jumpForce: 12,
+            grounded: false,
+            color: "#b83420" // Vermelho Mario
+        };
+
+        // Plataformas (Chão e blocos suspensos)
+        // Tipo: 'ground' (terra/grama), 'block' (bloco de tijolo), 'pipe' (cano)
+        const platforms = [
+            // Chão inicial
+            { x: 0, y: 400, width: 300, height: 50, type: 'ground' },
+            // Obstáculos e buracos (Parkour)
+            { x: 200, y: 320, width: 50, height: 80, type: 'pipe' }, 
+            { x: 380, y: 300, width: 120, height: 20, type: 'block' },
+            { x: 420, y: 200, width: 40, height: 20, type: 'block' }, // Bloco flutuante alto
+            { x: 580, y: 280, width: 150, height: 20, type: 'block' },
+            { x: 630, y: 180, width: 50, height: 20, type: 'block' },
+            // Chão final
+            { x: 800, y: 400, width: 400, height: 50, type: 'ground' }
+        ];
+
+        // Moedas flutuantes
+        const coins = [
+            { x: 400, y: 260, collected: false },
+            { x: 440, y: 160, collected: false },
+            { x: 610, y: 240, collected: false },
+            { x: 650, y: 140, collected: false }
+        ];
+
+        // Câmera para seguir o jogador horizontalmente
+        let cameraX = 0;
+
+        window.addEventListener("keydown", (e) => keys[e.key] = true);
+        window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+        function resetGame() {
+            player.x = 50;
+            player.y = 300;
+            player.speedX = 0;
+            player.speedY = 0;
+            score = 0;
+            scoreEl.innerText = score;
+            coins.forEach(c => c.collected = false);
+        }
+
+        function update() {
+            // Movimento Esquerda / Direita
+            if (keys["ArrowRight"] || keys["d"]) {
+                if (player.speedX < player.maxSpeed) player.speedX += 0.8;
+            } else if (keys["ArrowLeft"] || keys["a"]) {
+                if (player.speedX > -player.maxSpeed) player.speedX -= 0.8;
+            } else {
+                player.speedX *= friction; // Desaceleração gradual
+            }
+
+            // Pulo (Apenas se estiver no chão)
+            if ((keys["ArrowUp"] || keys["w"] || keys[" "]) && player.grounded) {
+                player.speedY = -player.jumpForce;
+                player.grounded = false;
+            }
+
+            // Aplica gravidade
+            player.speedY += gravity;
+
+            // Atualiza posições
+            player.x += player.speedX;
+            player.y += player.speedY;
+            player.grounded = false;
+
+            // Sistema de Colisão com as Plataformas
+            for (const plat of platforms) {
+                // Checa interseção básica
+                if (player.x < plat.x + plat.width &&
+                    player.x + player.width > plat.x &&
+                    player.y < plat.y + plat.height &&
+                    player.y + player.height > plat.y) {
+
+                    // Calcula vetores de colisão para saber por onde bateu
+                    let overlapX = Math.min(player.x + player.width - plat.x, plat.x + plat.width - player.x);
+                    let overlapY = Math.min(player.y + player.height - plat.y, plat.y + plat.height - player.y);
+
+                    if (overlapX > overlapY) {
+                        // Colisão vertical
+                        if (player.speedY > 0) { // Caindo em cima da plataforma
+                            player.y -= overlapY;
+                            player.speedY = 0;
+                            player.grounded = true;
+                        } else if (player.speedY < 0) { // Batendo a cabeça por baixo
+                            player.y += overlapY;
+                            player.speedY = 0;
+                        }
+                    } else {
+                        // Colisão lateral (paredes)
+                        if (player.speedX > 0) player.x -= overlapX;
+                        else if (player.speedX < 0) player.x += overlapX;
+                    }
+                }
+            }
+
+            // Coleta de moedas
+            for (const coin of coins) {
+                if (!coin.collected &&
+                    player.x < coin.x + 15 && player.x + player.width > coin.x &&
+                    player.y < coin.y + 20 && player.y + player.height > coin.y) {
+                    coin.collected = true;
+                    score++;
+                    scoreEl.innerText = score;
+                }
+            }
+
+            // Atualiza a Câmera para seguir o jogador
+            cameraX = player.x - canvas.width / 4;
+
+            // Condição de Derrota (Cair no abismo)
+            if (player.y > canvas.height) {
+                resetGame();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            // Desloca o cenário de acordo com a câmera
+            ctx.translate(-cameraX, 0);
+
+            // Desenhar Plataformas com visual retrô
+            for (const plat of platforms) {
+                if (plat.type === 'ground') {
+                    // Grama
+                    ctx.fillStyle = "#73c718";
+                    ctx.fillRect(plat.x, plat.y, plat.width, 12);
+                    // Terra abaixo
+                    ctx.fillStyle = "#d88038";
+                    ctx.fillRect(plat.x, plat.y + 12, plat.width, plat.height - 12);
+                } else if (plat.type === 'block') {
+                    // Bloco de tijolo marrom do Mario
+                    ctx.fillStyle = "#b84418";
+                    ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+                    // Detalhe de linhas de tijolo
+                    ctx.strokeStyle = "#000000";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+                } else if (plat.type === 'pipe') {
+                    // Cano Verde clássico
+                    ctx.fillStyle = "#00a800";
+                    ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+                    ctx.fillStyle = "#40d840"; // Luz no cano
+                    ctx.fillRect(plat.x + 5, plat.y, 10, plat.height);
+                    ctx.strokeStyle = "#000";
+                    ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+                }
+            }
+
+            // Desenhar Moedas (Círculos dourados com borda)
+            for (const coin of coins) {
+                if (!coin.collected) {
+                    ctx.fillStyle = "#f8d818"; // Dourado
+                    ctx.beginPath();
+                    ctx.ellipse(coin.x + 7, coin.y + 10, 7, 10, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = "#b84418";
+                    ctx.stroke();
+                }
+            }
+
+            // Desenhar Jogador (Sprite simples simulando o Macacão do Mario)
+            // Pernas/Calça azul
+            ctx.fillStyle = "#0020b8";
+            ctx.fillRect(player.x, player.y + 16, player.width, 16);
+            // Camisa/Corpo vermelho
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y + 6, player.width, 12);
+            // Cabeça/Boné
+            ctx.fillStyle = "#f8b888"; // Pele
+            ctx.fillRect(player.x + 2, player.y - 4, player.width - 4, 10);
+            ctx.fillStyle = player.color; // Boné Vermelho
+            ctx.fillRect(player.x, player.y - 6, player.width, 4);
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
